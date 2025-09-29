@@ -3,9 +3,10 @@ const express = require('express');
 const sql = require('mssql');
 const cors = require('cors');
 const admin = require('firebase-admin');
+const path = require('path');
 
 // --- FIREBASE SETUP ---
-// Point to the credentials file you downloaded
+// Point to the credentials file you downloaded (you already had this)
 const serviceAccount = require('./firebase-credentials.json');
 
 admin.initializeApp({
@@ -20,6 +21,7 @@ app.use(cors());
 app.use(express.json()); // Middleware to parse incoming JSON data
 
 // --- Your SQL Server Configuration ---
+// (You can optionally move these into environment variables for safety)
 const dbConfig = {
     user: 'LSP',
     password: 'Loongsen@2025',
@@ -36,11 +38,15 @@ const dbConfig = {
     }
 };
 
+// Simple root route (useful for Render / health check)
+app.get('/', (req, res) => {
+  res.send('QC API is alive');
+});
+
 // --- API Endpoint to GET Job Order Details (from SQL Server) ---
 app.get('/api/joborder/:id', async (req, res) => {
     const jobOrderId = req.params.id;
     console.log(`Received GET request for Job Order: ${jobOrderId}`);
-    // ... (rest of the GET logic is the same as before) ...
     const queryString = `SELECT P.Qty, P.Weight, C.Measurement, P.StkCode, C.SizeWidth, C.SizeLength, C.SizeThick, Cust.CustName FROM dbo.tblCS_Config_ProductNo AS C INNER JOIN dbo.tblProd_Trans_PlanMs AS P ON C.StkCode = P.StkCode LEFT OUTER JOIN dbo.tblCS_Trans_OrderMs AS O ON P.OrderID = O.TransID LEFT OUTER JOIN dbo.tblSystem_Config_CustInfo AS Cust ON O.CustCode = Cust.CustID WHERE (C.bStatus = 1 AND P.LotNo = @jobOrderId)`;
     try {
         let pool = await sql.connect(dbConfig);
@@ -61,7 +67,7 @@ app.get('/api/joborder/:id', async (req, res) => {
 // --- NEW API Endpoint to POST Inspection Data (to Firebase) ---
 app.post('/api/inspections', async (req, res) => {
     const inspectionData = req.body;
-    console.log("Received POST request to save inspection:", inspectionData.jobOrder);
+    console.log("Received POST request to save inspection:", inspectionData && inspectionData.jobOrder);
 
     if (!inspectionData || !inspectionData.jobOrder) {
         return res.status(400).json({ error: 'Missing inspection data or Job Order.' });
@@ -72,7 +78,6 @@ app.post('/api/inspections', async (req, res) => {
         inspectionData.serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
         
         // Add the data to a Firestore collection called "inspections"
-        // Firestore will automatically generate a unique ID for the document
         const docRef = await firestoreDb.collection('inspections').add(inspectionData);
         
         console.log("Successfully saved inspection with ID:", docRef.id);
@@ -84,9 +89,8 @@ app.post('/api/inspections', async (req, res) => {
     }
 });
 
-
-// Start the server
-const port = 3000;
-app.listen(port, () => {
-    console.log(`API server running on http://localhost:${port}`);
+// ==== IMPORTANT: use Render's provided PORT or fallback to 3000 for local dev ====
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`API server running on port ${PORT}`);
 });
