@@ -94,3 +94,13 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`API server running on port ${PORT}`);
 });
+// --- HEALTH CHECK ---
+app.get('/api/health/db', async (req, res) => {
+    try {
+        let pool = await sql.connect(dbConfig);
+        const result = await pool.request().query('SELECT 1 as test');
+        res.json({ success: true, test: result.recordset[0].test });
+    } catch (err) {
+        res.status(503).json({ success: false, error: err.message });
+    }
+});
